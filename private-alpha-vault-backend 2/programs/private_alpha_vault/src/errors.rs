@@ -16,4 +16,8 @@ pub enum VaultError {
     InsufficientYieldPool,
     #[msg("No escrowed funds to distribute yield")]
     NoEscrow,
+    #[msg("Invalid secret - hash does not match note ID")]
+    InvalidSecret,
+    #[msg("Stealth note has already been claimed")]
+    NoteAlreadyClaimed,
 }

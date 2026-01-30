@@ -25,7 +25,9 @@ const INCO_LIGHTNING_ID = new PublicKey('5sjEbPiqgZrYwR31ahR6Uk9wf5awoX61YGg7jEx
 const SEED_VAULT = new TextEncoder().encode('vault_v2');
 const SEED_USER = new TextEncoder().encode('user_v2');
 
-type InstructionName = 'initialize_vault' | 'deposit' | 'withdraw' | 'apply_yield' | 'transfer' | 'claim_access' | 'claim_yield';
+const SEED_STEALTH_NOTE = new TextEncoder().encode('stealth_note');
+
+type InstructionName = 'initialize_vault' | 'deposit' | 'withdraw' | 'apply_yield' | 'transfer' | 'claim_access' | 'claim_yield' | 'create_stealth_note' | 'claim_stealth_note';
 
 // Anchor instruction discriminators (first 8 bytes of sha256("global:<instruction_name>"))
 const INSTRUCTION_DISCRIMINATORS: Record<InstructionName, Uint8Array> = {
@@ -36,6 +38,8 @@ const INSTRUCTION_DISCRIMINATORS: Record<InstructionName, Uint8Array> = {
   transfer: hexToBytes('a334c8e78c0345ba'),
   claim_access: hexToBytes('0e67cbb5aa3873da'), // [14, 103, 203, 181, 170, 56, 115, 218]
   claim_yield: hexToBytes('314a6f07ba163da5'), // [49, 74, 111, 7, 186, 22, 61, 165]
+  create_stealth_note: hexToBytes('4b5aad640e9e1898'),
+  claim_stealth_note: hexToBytes('d3fe1d44d7b68a40'),
 };
 
 export interface VaultMetadataSummary {
@@ -49,6 +53,15 @@ export interface VaultMetadataSummary {
 
 export interface DecryptedBalance {
   value: bigint;
+}
+
+export interface StealthNoteInfo {
+  noteId: string; // hex string of the 32-byte note ID
+  encryptedAmountHandle: string;
+  lamports: number;
+  sender: string;
+  createdAt: number;
+  claimed: boolean;
 }
 
 interface PhantomProvider {
@@ -209,6 +222,8 @@ class VaultService {
     if (senderEscrowLamports < Number(lamports)) {
       throw new Error('Insufficient vault balance for this transfer.');
     }
+
+    const [vaultPda] = PublicKey.findProgramAddressSync([SEED_VAULT], PROGRAM_ID);
 
     const payload = this.concatBytes(
       this.serializeVector(encryptedBuffer),
@@ -459,6 +474,250 @@ class VaultService {
   }
 
   /**
+   * Generate a note ID from a secret passphrase using SHA256
+   */
+  async generateNoteId(secret: string): Promise<Uint8Array> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(secret);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return new Uint8Array(hashBuffer);
+  }
+
+  /**
+   * Create a stealth note - send funds to a secret identifier instead of a public address.
+   * The recipient can claim by knowing the secret passphrase.
+   * @param amount Amount in SOL to send
+   * @param secret The secret passphrase (will be hashed to create note ID)
+   * @returns Transaction signature and the note ID (hex)
+   */
+  async createStealthNote(amount: number, secret: string): Promise<{ signature: string; noteId: string }> {
+    if (!this.publicKey || !this.wallet) {
+      throw new Error('Connect a wallet before creating a stealth note.');
+    }
+
+    console.log(`[Vault] Creating stealth note with ${amount} SOL...`);
+
+    // Generate note ID from secret
+    const noteId = await this.generateNoteId(secret);
+    const noteIdHex = bytesToHex(noteId);
+    console.log(`[Vault] Note ID (hash of secret): ${noteIdHex}`);
+
+    // Convert SOL to lamports and encrypt
+    const lamports = BigInt(Math.round(amount * 1_000_000_000));
+    console.log(`[Vault] Encrypting ${lamports} lamports...`);
+    const encryptedHex = await encryptValue(lamports);
+    const encryptedBuffer = hexToBuffer(encryptedHex);
+    console.log(`[Vault] Encryption complete, ciphertext length: ${encryptedHex.length}`);
+
+    // Check wallet balance
+    const walletLamports = await this.connection.getBalance(this.publicKey);
+    const feeBuffer = 0.01 * 1_000_000_000;
+    if (walletLamports < Number(lamports) + feeBuffer) {
+      throw new Error('Insufficient wallet SOL to create this stealth note.');
+    }
+
+    // Derive the stealth note PDA
+    const [stealthNotePda] = PublicKey.findProgramAddressSync(
+      [SEED_STEALTH_NOTE, noteId],
+      PROGRAM_ID
+    );
+    console.log(`[Vault] Stealth Note PDA: ${stealthNotePda.toBase58()}`);
+
+    // Build instruction data: discriminator + note_id (32 bytes) + Vec<u8> encrypted + lamports (u64)
+    const payload = this.concatBytes(
+      noteId,
+      this.serializeVector(encryptedBuffer),
+      this.serializeU64(lamports)
+    );
+    const instructionData = this.buildInstructionData('create_stealth_note', payload);
+
+    const ix = new TransactionInstruction({
+      programId: PROGRAM_ID,
+      keys: [
+        { pubkey: stealthNotePda, isSigner: false, isWritable: true },
+        { pubkey: this.publicKey, isSigner: true, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: INCO_LIGHTNING_ID, isSigner: false, isWritable: false },
+      ],
+      data: instructionData,
+    });
+
+    console.log('[Vault] Sending create_stealth_note transaction...');
+    const signature = await this.sendTransaction(ix);
+    console.log(`[Vault] Stealth note created! Signature: ${signature}`);
+    console.log(`[Vault] Share this secret with the recipient: "${secret}"`);
+
+    return { signature, noteId: noteIdHex };
+  }
+
+  /**
+   * Claim a stealth note by providing the secret passphrase.
+   * The secret is hashed and matched against the note ID.
+   * @param secret The secret passphrase shared by the sender
+   */
+  async claimStealthNote(secret: string): Promise<string> {
+    if (!this.publicKey || !this.wallet) {
+      throw new Error('Connect a wallet before claiming a stealth note.');
+    }
+
+    console.log(`[Vault] Claiming stealth note with secret...`);
+
+    // Generate note ID from secret
+    const noteId = await this.generateNoteId(secret);
+    const noteIdHex = bytesToHex(noteId);
+    console.log(`[Vault] Note ID (hash of secret): ${noteIdHex}`);
+
+    // Derive PDAs
+    const [vaultPda] = PublicKey.findProgramAddressSync([SEED_VAULT], PROGRAM_ID);
+    const [stealthNotePda] = PublicKey.findProgramAddressSync(
+      [SEED_STEALTH_NOTE, noteId],
+      PROGRAM_ID
+    );
+    const [claimerPda] = PublicKey.findProgramAddressSync(
+      [SEED_USER, this.publicKey.toBuffer()],
+      PROGRAM_ID
+    );
+
+    console.log(`[Vault] Stealth Note PDA: ${stealthNotePda.toBase58()}`);
+    console.log(`[Vault] Claimer Position PDA: ${claimerPda.toBase58()}`);
+
+    // Check if the note exists and is not claimed
+    const noteInfo = await this.connection.getAccountInfo(stealthNotePda);
+    if (!noteInfo) {
+      throw new Error('Stealth note not found. Check if the secret is correct.');
+    }
+
+    // Parse the note to check if claimed
+    const claimed = noteInfo.data[88] === 1; // claimed is at offset 88 (8+32+16+8+32+8+1-1)
+    if (claimed) {
+      throw new Error('This stealth note has already been claimed.');
+    }
+
+    // Build instruction data: discriminator + Vec<u8> secret
+    const secretBytes = new TextEncoder().encode(secret);
+    const payload = this.serializeVector(secretBytes);
+    const instructionData = this.buildInstructionData('claim_stealth_note', payload);
+
+    // First, simulate to get the handles for auto-authorization
+    const simulationIx = new TransactionInstruction({
+      programId: PROGRAM_ID,
+      keys: [
+        { pubkey: vaultPda, isSigner: false, isWritable: true },
+        { pubkey: stealthNotePda, isSigner: false, isWritable: true },
+        { pubkey: claimerPda, isSigner: false, isWritable: true },
+        { pubkey: this.publicKey, isSigner: true, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: INCO_LIGHTNING_ID, isSigner: false, isWritable: false },
+      ],
+      data: instructionData,
+    });
+
+    console.log('[Vault] Simulating claim to get handles for auto-authorization...');
+    let claimerHandle: bigint;
+    let vaultHandle: bigint;
+
+    try {
+      const handles = await this.simulateClaimAndGetHandles(simulationIx, claimerPda, vaultPda);
+      claimerHandle = handles.claimerHandle;
+      vaultHandle = handles.vaultHandle;
+      console.log(`[Vault] Simulation complete - Claimer handle: ${claimerHandle}, Vault handle: ${vaultHandle}`);
+    } catch (simError) {
+      console.warn('[Vault] Simulation failed, sending without auto-authorize:', simError);
+      // Fall back to direct transaction without auto-authorize
+      const ix = new TransactionInstruction({
+        programId: PROGRAM_ID,
+        keys: [
+          { pubkey: vaultPda, isSigner: false, isWritable: true },
+          { pubkey: stealthNotePda, isSigner: false, isWritable: true },
+          { pubkey: claimerPda, isSigner: false, isWritable: true },
+          { pubkey: this.publicKey, isSigner: true, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: INCO_LIGHTNING_ID, isSigner: false, isWritable: false },
+        ],
+        data: instructionData,
+      });
+      return this.sendTransaction(ix);
+    }
+
+    const [allowanceClaimer] = findAllowancePda(claimerHandle, this.publicKey);
+    const [allowanceVault] = findAllowancePda(vaultHandle, this.publicKey);
+
+    // Send the real tx with remaining accounts for auto-authorize
+    const realIx = new TransactionInstruction({
+      programId: PROGRAM_ID,
+      keys: [
+        { pubkey: vaultPda, isSigner: false, isWritable: true },
+        { pubkey: stealthNotePda, isSigner: false, isWritable: true },
+        { pubkey: claimerPda, isSigner: false, isWritable: true },
+        { pubkey: this.publicKey, isSigner: true, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: INCO_LIGHTNING_ID, isSigner: false, isWritable: false },
+        // remaining_accounts for auto-authorize allow() CPIs:
+        { pubkey: allowanceClaimer, isSigner: false, isWritable: true },
+        { pubkey: this.publicKey, isSigner: false, isWritable: false },
+        { pubkey: allowanceVault, isSigner: false, isWritable: true },
+        { pubkey: this.publicKey, isSigner: false, isWritable: false },
+      ],
+      data: instructionData,
+    });
+
+    console.log('[Vault] Sending claim_stealth_note transaction with auto-authorize...');
+    const txSig = await this.sendTransaction(realIx);
+    console.log(`[Vault] Stealth note claimed! Signature: ${txSig}`);
+    return txSig;
+  }
+
+  /**
+   * Fetch stealth note information by note ID (hex string)
+   */
+  async fetchStealthNote(noteIdHex: string): Promise<StealthNoteInfo | null> {
+    const noteId = hexToBytes(noteIdHex);
+    const [stealthNotePda] = PublicKey.findProgramAddressSync(
+      [SEED_STEALTH_NOTE, noteId],
+      PROGRAM_ID
+    );
+
+    const accountInfo = await this.connection.getAccountInfo(stealthNotePda);
+    if (!accountInfo) {
+      return null;
+    }
+
+    // Parse StealthNote account:
+    // 0..8: discriminator
+    // 8..40: note_id (32 bytes)
+    // 40..56: encrypted_amount handle (16 bytes)
+    // 56..64: lamports (u64 LE)
+    // 64..96: sender (32 bytes)
+    // 96..104: created_at (i64 LE)
+    // 104..105: claimed (bool)
+    // 105..106: bump
+    const data = accountInfo.data;
+    const handle = parseEuint128HandleFromStealthNote(data);
+    const lamports = new DataView(data.buffer, data.byteOffset + 56, 8).getBigUint64(0, true);
+    const sender = new PublicKey(data.slice(64, 96)).toBase58();
+    const createdAt = new DataView(data.buffer, data.byteOffset + 96, 8).getBigInt64(0, true);
+    const claimed = data[104] === 1;
+
+    return {
+      noteId: noteIdHex,
+      encryptedAmountHandle: handle.toString(),
+      lamports: Number(lamports),
+      sender,
+      createdAt: Number(createdAt),
+      claimed,
+    };
+  }
+
+  /**
+   * Check if a stealth note exists for a given secret
+   */
+  async checkStealthNote(secret: string): Promise<StealthNoteInfo | null> {
+    const noteId = await this.generateNoteId(secret);
+    const noteIdHex = bytesToHex(noteId);
+    return this.fetchStealthNote(noteIdHex);
+  }
+
+  /**
    * Decrypt an encrypted balance handle using Inco's attested reveal
    * Requires wallet signature for authorization
    */
@@ -548,6 +807,19 @@ class VaultService {
     // NOTE: We now use simulation to get the handles for the Auto-Authorize feature.
     // Even though Inco FHE handles are nondeterministic, the simulation
     // gives us a valid handle that we can use to derive the allowance PDA.
+    
+    // Build simulation instruction (without remaining_accounts)
+    const simulationIx = new TransactionInstruction({
+      programId: PROGRAM_ID,
+      keys: [
+        { pubkey: vaultPda, isSigner: false, isWritable: true },
+        { pubkey: userPda, isSigner: false, isWritable: true },
+        { pubkey: this.publicKey, isSigner: true, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: INCO_LIGHTNING_ID, isSigner: false, isWritable: false },
+      ],
+      data: instructionData,
+    });
     
     console.log('[Vault] Simulating transaction to get handles for auto-authorization...');
     let userHandle: bigint;
@@ -810,6 +1082,64 @@ class VaultService {
 
     return { senderHandle, recipientHandle };
   }
+
+  private async simulateClaimAndGetHandles(
+    ix: TransactionInstruction,
+    claimerPda: PublicKey,
+    vaultPda: PublicKey
+  ): Promise<{ claimerHandle: bigint; vaultHandle: bigint }> {
+    const transaction = new Transaction().add(ix);
+    transaction.feePayer = this.publicKey!;
+    const latest = await this.connection.getLatestBlockhash('confirmed');
+    transaction.recentBlockhash = latest.blockhash;
+
+    let simulation:
+      | { value: SimulatedTransactionResponse }
+      | null = null;
+    try {
+      const res = await this.connection.simulateTransaction(
+        transaction,
+        undefined,
+        [claimerPda, vaultPda]
+      );
+      simulation = res as any;
+    } catch {
+      // fall through
+    }
+
+    if (!simulation) {
+      const signed = await this.wallet!.signTransaction(transaction);
+      const res = await this.connection.simulateTransaction(
+        signed,
+        undefined,
+        [claimerPda, vaultPda]
+      );
+      simulation = res as any;
+    }
+
+    if (simulation.value.err) {
+      throw new Error(`Claim simulation failed: ${JSON.stringify(simulation.value.err)}`);
+    }
+
+    const accounts = simulation.value.accounts;
+    if (!accounts || accounts.length < 2) {
+      throw new Error('Simulation did not return account data for handle extraction.');
+    }
+
+    const claimerDataB64 = (accounts[0] as any)?.data?.[0];
+    const vaultDataB64 = (accounts[1] as any)?.data?.[0];
+    if (!claimerDataB64 || !vaultDataB64) {
+      throw new Error('Simulation missing account data payloads.');
+    }
+
+    const claimerBuf = Buffer.from(claimerDataB64, 'base64');
+    const vaultBuf = Buffer.from(vaultDataB64, 'base64');
+
+    const claimerHandle = parseEuint128HandleFromAccountData(claimerBuf);
+    const vaultHandle = parseEuint128HandleFromAccountData(vaultBuf);
+
+    return { claimerHandle, vaultHandle };
+  }
 }
 
 function hexToBytes(hex: string): Uint8Array {
@@ -830,6 +1160,19 @@ function parseEuint128HandleFromAccountData(data: Uint8Array): bigint {
   // 0..8: discriminator
   // 8..40: pubkey (owner/authority)
   // 40..56: Euint128 handle (little-endian 16 bytes)
+  const handleBytes = data.slice(40, 56);
+  let handle = 0n;
+  for (let i = handleBytes.length - 1; i >= 0; i--) {
+    handle = handle * 256n + BigInt(handleBytes[i]!);
+  }
+  return handle;
+}
+
+function parseEuint128HandleFromStealthNote(data: Uint8Array): bigint {
+  // StealthNote Layout:
+  // 0..8: discriminator
+  // 8..40: note_id (32 bytes)
+  // 40..56: encrypted_amount handle (16 bytes)
   const handleBytes = data.slice(40, 56);
   let handle = 0n;
   for (let i = handleBytes.length - 1; i >= 0; i--) {

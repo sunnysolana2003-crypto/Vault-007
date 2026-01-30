@@ -4,6 +4,7 @@ import ActionSuite from './ActionSuite';
 import StatusMonitor from './StatusMonitor';
 import AdminPanel from './AdminPanel';
 import TransferPanel from './TransferPanel';
+import StealthNotes from './StealthNotes';
 import { motion } from 'framer-motion';
 
 const VaultTerminal: React.FC = () => {
@@ -322,6 +323,9 @@ const VaultTerminal: React.FC = () => {
 
             {/* Transfer Panel - Send to other users */}
             <TransferPanel />
+
+            {/* Stealth Notes - Hidden recipient transfers */}
+            <StealthNotes />
 
             {/* On-Chain Data Card */}
             <div className="border border-[#1a1a1a] bg-[#080808] rounded-lg overflow-hidden">

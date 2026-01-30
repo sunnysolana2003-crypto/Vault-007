@@ -9,7 +9,7 @@ import React, {
   useState,
   ReactNode,
 } from 'react';
-import VaultService, { VaultMetadataSummary } from '../services/vault';
+import VaultService, { VaultMetadataSummary, StealthNoteInfo } from '../services/vault';
 import { type WalletProvider } from '../services/wallet-detector';
 
 type WalletStatus = 'disconnected' | 'connecting' | 'connected';
@@ -121,6 +121,9 @@ type VaultContextValue = {
   fetchUserYieldIndex: () => Promise<string>;
   claimAccess: () => Promise<string>;
   claimYield: () => Promise<string>;
+  createStealthNote: (amount: number, secret: string) => Promise<{ signature: string; noteId: string }>;
+  claimStealthNote: (secret: string) => Promise<string>;
+  checkStealthNote: (secret: string) => Promise<StealthNoteInfo | null>;
   showWalletModal: boolean;
   setShowWalletModal: (show: boolean) => void;
   handleWalletSelect: (wallet: WalletProvider) => Promise<void>;
@@ -583,6 +586,80 @@ export const VaultProvider: React.FC<{ children: ReactNode }> = ({
     }
   }, []);
 
+  const createStealthNote = useCallback(async (amount: number, secret: string): Promise<{ signature: string; noteId: string }> => {
+    dispatch({ type: 'START_OPERATION', payload: 'deposit' });
+    try {
+      const result = await vaultServiceRef.current.createStealthNote(amount, secret);
+      dispatch({
+        type: 'PUSH_LOG',
+        payload: {
+          level: 'info',
+          code: 'STEALTH_NOTE_CREATED',
+          message: `Stealth note created (${result.signature.slice(0, 8)})`,
+        },
+      });
+      await refreshVaultMetadata();
+      return result;
+    } catch (err) {
+      dispatch({
+        type: 'PUSH_LOG',
+        payload: {
+          level: 'error',
+          code: 'STEALTH_NOTE_FAIL',
+          message: err instanceof Error ? err.message : 'Failed to create stealth note.',
+        },
+      });
+      throw err;
+    } finally {
+      dispatch({ type: 'END_OPERATION' });
+    }
+  }, [refreshVaultMetadata]);
+
+  const claimStealthNote = useCallback(async (secret: string): Promise<string> => {
+    dispatch({ type: 'START_OPERATION', payload: 'deposit' });
+    try {
+      const signature = await vaultServiceRef.current.claimStealthNote(secret);
+      dispatch({
+        type: 'PUSH_LOG',
+        payload: {
+          level: 'info',
+          code: 'STEALTH_NOTE_CLAIMED',
+          message: `Stealth note claimed (${signature.slice(0, 8)})`,
+        },
+      });
+      await refreshVaultMetadata();
+      return signature;
+    } catch (err) {
+      dispatch({
+        type: 'PUSH_LOG',
+        payload: {
+          level: 'error',
+          code: 'STEALTH_CLAIM_FAIL',
+          message: err instanceof Error ? err.message : 'Failed to claim stealth note.',
+        },
+      });
+      throw err;
+    } finally {
+      dispatch({ type: 'END_OPERATION' });
+    }
+  }, [refreshVaultMetadata]);
+
+  const checkStealthNote = useCallback(async (secret: string): Promise<StealthNoteInfo | null> => {
+    try {
+      return await vaultServiceRef.current.checkStealthNote(secret);
+    } catch (err) {
+      dispatch({
+        type: 'PUSH_LOG',
+        payload: {
+          level: 'warn',
+          code: 'STEALTH_CHECK',
+          message: err instanceof Error ? err.message : 'Unable to check stealth note.',
+        },
+      });
+      return null;
+    }
+  }, []);
+
   return (
     <VaultContext.Provider
       value={{
@@ -604,6 +681,9 @@ export const VaultProvider: React.FC<{ children: ReactNode }> = ({
         fetchUserYieldIndex,
         claimAccess,
         claimYield,
+        createStealthNote,
+        claimStealthNote,
+        checkStealthNote,
         showWalletModal,
         setShowWalletModal,
         handleWalletSelect,

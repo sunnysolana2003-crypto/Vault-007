@@ -6,6 +6,8 @@ pub mod transfer;
 pub mod claim_access;
 pub mod claim_yield;
 pub mod yield_utils;
+pub mod create_stealth_note;
+pub mod claim_stealth_note;
 
 pub use initialize_vault::*;
 pub use deposit::*;
@@ -14,3 +16,5 @@ pub use apply_yield::*;
 pub use transfer::*;
 pub use claim_access::*;
 pub use claim_yield::*;
+pub use create_stealth_note::*;
+pub use claim_stealth_note::*;

@@ -56,4 +56,24 @@ pub mod private_alpha_vault {
     pub fn claim_yield<'info>(ctx: Context<'_, '_, 'info, 'info, ClaimYield<'info>>) -> Result<()> {
         claim_yield::handler(ctx)
     }
+
+    /// Create a stealth note - send funds to a secret identifier instead of a public address.
+    /// The recipient can claim by proving knowledge of the secret passphrase.
+    pub fn create_stealth_note<'info>(
+        ctx: Context<'_, '_, 'info, 'info, CreateStealthNote<'info>>,
+        note_id: [u8; 32],
+        encrypted_amount: Vec<u8>,
+        lamports: u64,
+    ) -> Result<()> {
+        create_stealth_note::handler(ctx, note_id, encrypted_amount, lamports)
+    }
+
+    /// Claim a stealth note by providing the secret passphrase.
+    /// The secret is hashed and matched against the note_id.
+    pub fn claim_stealth_note<'info>(
+        ctx: Context<'_, '_, 'info, 'info, ClaimStealthNote<'info>>,
+        secret: Vec<u8>,
+    ) -> Result<()> {
+        claim_stealth_note::handler(ctx, secret)
+    }
 }

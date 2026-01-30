@@ -56,6 +56,13 @@ Vault-007 is a **privacy-preserving DeFi vault** that enables users to deposit, 
 - Requires wallet signature for authentication
 - Decrypted values exist only in browser memory (never stored)
 
+### 6. Stealth Notes (100% Hidden Recipient)
+- Send funds using a **secret passphrase** instead of a public wallet address
+- **Recipient's wallet address is NEVER visible on-chain**
+- Sender creates a note with a secret, shares it off-chain (message, email, etc.)
+- Recipient claims by entering the secret passphrase
+- Perfect for truly anonymous transfers
+
 ---
 
 ## How It Works
@@ -150,10 +157,15 @@ Vault-007 is a **privacy-preserving DeFi vault** that enables users to deposit, 
 │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐        │
 │  │   transfer     │  │  apply_yield   │  │ claim_access   │        │
 │  └────────────────┘  └────────────────┘  └────────────────┘        │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐        │
+│  │ create_stealth │  │ claim_stealth  │  │  claim_yield   │        │
+│  │    _note       │  │    _note       │  │                │        │
+│  └────────────────┘  └────────────────┘  └────────────────┘        │
 │                                                                     │
 │  Accounts:                                                          │
-│  • Vault PDA: Total encrypted balance, authority                   │
-│  • UserPosition PDA: Individual encrypted balances                 │
+│  • Vault PDA: Total encrypted balance, authority, yield index      │
+│  • UserPosition PDA: Individual encrypted balances, yield index    │
+│  • StealthNote PDA: Secret-based transfers with hidden recipient   │
 └────────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
@@ -226,6 +238,7 @@ npm run dev
 2. **View Balance**: Click "Decrypt & Reveal" to see your encrypted balance
 3. **Transfer**: Switch to Transfer tab, enter recipient address and amount
 4. **Withdraw**: Enter amount and click "Withdraw"
+5. **Stealth Notes**: Use the "Stealth Notes" panel to send funds with a secret passphrase (recipient address stays hidden!)
 
 ---
 
@@ -283,6 +296,9 @@ pub struct UserPosition {
 | apply_yield | `6e7ea020cbc9228f` |
 | transfer | `a334c8e78c0345ba` |
 | claim_access | `0e67cbb5aa3873da` |
+| claim_yield | `314a6f07ba163da5` |
+| create_stealth_note | `4b5aad640e9e1898` |
+| claim_stealth_note | `d3fe1d44d7b68a40` |
 
 ---
 
@@ -292,11 +308,13 @@ pub struct UserPosition {
 - All deposit/withdraw/transfer amounts
 - User balances (encrypted on-chain)
 - Total vault balance
+- **Stealth Note recipients** (wallet address never appears on-chain!)
 
 ### What's Public
 - Transaction existence (that a deposit/withdraw occurred)
-- Account addresses (PDAs are deterministic)
+- Account addresses (PDAs are deterministic, but stealth note PDAs are derived from secret hashes)
 - Vault authority address
+- Stealth note existence (but not who can claim it)
 
 ### Trust Assumptions
 - Inco Network operates honestly (FHE computations)
@@ -317,6 +335,8 @@ pub struct UserPosition {
 
 ## Future Roadmap
 
+- [x] ~~Stealth Notes for hidden recipient transfers~~
+- [x] ~~Lazy yield distribution with global yield index~~
 - [ ] Proportional yield distribution based on encrypted balances
 - [ ] Multi-asset support (SPL tokens)
 - [ ] Private governance voting
