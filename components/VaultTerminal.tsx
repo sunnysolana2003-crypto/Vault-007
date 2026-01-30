@@ -88,8 +88,16 @@ const VaultTerminal: React.FC = () => {
           if (!cancelled) setUserYieldIndex(yIndex);
         } catch (userErr) {
           const errMsg = userErr instanceof Error ? userErr.message : '';
-          // Check if this is a "not allowed to decrypt" error
-          if (errMsg.includes('not allowed') || errMsg.includes('Address is not allowed')) {
+          console.log('[Vault] User decryption error details:', errMsg);
+          
+          // Check if this is a "not allowed to decrypt" error (403 from Inco)
+          if (
+            errMsg.includes('not allowed') || 
+            errMsg.includes('Address is not allowed') || 
+            errMsg.includes('403') ||
+            errMsg.includes('Covalidator API request failed')
+          ) {
+            console.log('[Vault] Permission required for user handle. Showing Claim Access button.');
             if (!cancelled) {
               setNeedsClaimAccess(true);
               setUserPlaintextLamports(null);
@@ -98,6 +106,7 @@ const VaultTerminal: React.FC = () => {
             }
           } else {
             // User position doesn't exist yet - that's okay
+            console.log('[Vault] User position likely does not exist yet.');
             if (!cancelled) setUserPlaintextLamports(null);
           }
         }
