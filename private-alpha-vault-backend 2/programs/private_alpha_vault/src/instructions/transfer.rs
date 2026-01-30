@@ -106,26 +106,8 @@ pub fn handler<'info>(
     ctx.accounts.recipient_position.encrypted_balance = new_recipient_balance;
 
     // Move real SOL between user escrow PDAs.
-    let sender_key = ctx.accounts.sender.key();
-    let seeds: &[&[u8]] = &[
-        b"user_v2",
-        sender_key.as_ref(),
-        &[ctx.accounts.sender_position.bump],
-    ];
-    let transfer_ix = system_instruction::transfer(
-        &ctx.accounts.sender_position.key(),
-        &ctx.accounts.recipient_position.key(),
-        lamports,
-    );
-    invoke_signed(
-        &transfer_ix,
-        &[
-            ctx.accounts.sender_position.to_account_info(),
-            ctx.accounts.recipient_position.to_account_info(),
-            ctx.accounts.system_program.to_account_info(),
-        ],
-        &[seeds],
-    )?;
+    **ctx.accounts.sender_position.to_account_info().try_borrow_mut_lamports()? -= lamports;
+    **ctx.accounts.recipient_position.to_account_info().try_borrow_mut_lamports()? += lamports;
 
     // Demo policy: grant decrypt access to both sender and recipient for their new balances.
     // remaining_accounts:

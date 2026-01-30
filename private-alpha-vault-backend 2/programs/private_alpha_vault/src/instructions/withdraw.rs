@@ -78,26 +78,9 @@ pub fn handler<'info>(
     ctx.accounts.vault.total_encrypted_balance = new_vault_balance;
 
     // Move real SOL out of the user's escrow PDA back to the wallet.
-    let user_key = ctx.accounts.user.key();
-    let seeds: &[&[u8]] = &[
-        b"user_v2",
-        user_key.as_ref(),
-        &[ctx.accounts.user_position.bump],
-    ];
-    let transfer_ix = system_instruction::transfer(
-        &ctx.accounts.user_position.key(),
-        &user_key,
-        lamports,
-    );
-    invoke_signed(
-        &transfer_ix,
-        &[
-            ctx.accounts.user_position.to_account_info(),
-            ctx.accounts.user.to_account_info(),
-            ctx.accounts.system_program.to_account_info(),
-        ],
-        &[seeds],
-    )?;
+    **ctx.accounts.user_position.to_account_info().try_borrow_mut_lamports()? -= lamports;
+    **ctx.accounts.user.to_account_info().try_borrow_mut_lamports()? += lamports;
+
     ctx.accounts.vault.total_escrow_lamports = ctx
         .accounts
         .vault
