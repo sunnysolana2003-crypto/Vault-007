@@ -51,21 +51,9 @@ pub fn apply_pending_yield<'info>(
     }
 
     // Transfer pending yield from vault PDA to user PDA.
-    let seeds: &[&[u8]] = &[b"vault_v2", &[vault.bump]];
-    let transfer_ix = system_instruction::transfer(
-        &vault.key(),
-        &user_position.key(),
-        pending as u64,
-    );
-    invoke_signed(
-        &transfer_ix,
-        &[
-            vault.to_account_info(),
-            user_position.to_account_info(),
-            system_program,
-        ],
-        &[seeds],
-    )?;
+    let pending_u64 = pending as u64;
+    **vault.to_account_info().try_borrow_mut_lamports()? -= pending_u64;
+    **user_position.to_account_info().try_borrow_mut_lamports()? += pending_u64;
 
     // Add pending yield to encrypted balance.
     let cpi_ctx = CpiContext::new(inco_program.clone(), Operation { signer: signer.clone() });
