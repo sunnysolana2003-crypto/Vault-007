@@ -249,13 +249,13 @@ const VaultTerminal: React.FC = () => {
                       <span className="text-[11px] text-[#666] uppercase tracking-wider">Your Position</span>
                       <span className={`text-[10px] px-2 py-1 rounded ${
                         needsClaimAccess 
-                          ? 'bg-yellow-900/20 text-yellow-400' 
+                          ? 'bg-amber-900/20 text-amber-400' 
                           : state.isRevealed && formattedUserSol 
                             ? 'bg-blue-900/20 text-blue-400' 
                             : 'bg-[#1a1a1a] text-[#666]'
                       }`}>
                         {needsClaimAccess 
-                          ? 'DEPOSIT REQUIRED' 
+                          ? 'AUTHORIZATION NEEDED' 
                           : state.isRevealed && formattedUserSol 
                             ? 'DECRYPTED' 
                             : userPlaintextLamports === null && state.isRevealed 
@@ -266,19 +266,21 @@ const VaultTerminal: React.FC = () => {
                     <div className="text-3xl font-bold text-white mono">
                       {needsClaimAccess ? (
                         <div className="space-y-3">
-                          <span className="text-[#555] text-lg block">You have received funds! Make a deposit to view your balance.</span>
-                          <div className="bg-yellow-900/10 border border-yellow-900/20 rounded p-4 text-left">
-                            <p className="text-[11px] text-yellow-400 font-medium mb-2">To view your balance:</p>
-                            <ol className="text-[10px] text-[#666] space-y-1 list-decimal list-inside">
-                              <li>Go to the Deposit tab on the right</li>
-                              <li>Deposit any amount (even 0.001 SOL)</li>
-                              <li>This creates a new encrypted handle you can decrypt</li>
-                              <li>Your full balance (including transfers) will be visible</li>
-                            </ol>
+                          <span className="text-[#555] text-lg block">Permission required to view updated balance</span>
+                          <button
+                            onClick={handleClaimAccess}
+                            disabled={claimingAccess}
+                            className="px-4 py-2 bg-amber-900/20 text-amber-400 border border-amber-900/30 rounded text-[11px] font-medium uppercase tracking-wider hover:bg-amber-900/30 transition-all disabled:opacity-50"
+                          >
+                            {claimingAccess ? 'Claiming...' : 'Authorize Decryption'}
+                          </button>
+                          <div className="bg-amber-900/10 border border-amber-900/20 rounded p-4 text-left">
+                            <p className="text-[11px] text-amber-400 font-medium mb-2">Why is this needed?</p>
+                            <p className="text-[10px] text-[#666] leading-relaxed">
+                              Your last transaction created a new encrypted balance handle. 
+                              You must authorize your wallet to view this specific handle before it can be decrypted.
+                            </p>
                           </div>
-                          <p className="text-[10px] text-[#444]">
-                            This is required because FHE handles are owned by whoever created them. A deposit creates a new handle you own.
-                          </p>
                         </div>
                       ) : state.isRevealed ? (
                         formattedUserSol ? (
