@@ -110,42 +110,45 @@ pub fn handler<'info>(
     **ctx.accounts.recipient_position.to_account_info().try_borrow_mut_lamports()? += lamports;
 
     // Auto-Authorize: grant decrypt access to both sender and recipient for their new balances.
-    // remaining_accounts:
+    // This is OPTIONAL - if remaining_accounts is not provided, skip auto-authorize.
+    // remaining_accounts (if provided):
     // [0] allowance_sender (mut)
     // [1] allowed_address (readonly) - sender pubkey
     // [2] allowance_recipient (mut)
     // [3] allowed_address (readonly) - recipient pubkey
-    let allowance_sender = &ctx.remaining_accounts[0];
-    let allowed_sender = &ctx.remaining_accounts[1];
-    let allowance_recipient = &ctx.remaining_accounts[2];
-    let allowed_recipient = &ctx.remaining_accounts[3];
-    let system_program = ctx.accounts.system_program.to_account_info();
-    let sender_key = ctx.accounts.sender.key();
-    let recipient_key = ctx.accounts.recipient.key();
+    if ctx.remaining_accounts.len() >= 4 {
+        let allowance_sender = &ctx.remaining_accounts[0];
+        let allowed_sender = &ctx.remaining_accounts[1];
+        let allowance_recipient = &ctx.remaining_accounts[2];
+        let allowed_recipient = &ctx.remaining_accounts[3];
+        let system_program = ctx.accounts.system_program.to_account_info();
+        let sender_key = ctx.accounts.sender.key();
+        let recipient_key = ctx.accounts.recipient.key();
 
-    // Grant access to sender for their new balance
-    let cpi_ctx = CpiContext::new(
-        inco_program.clone(),
-        Allow {
-            allowance_account: allowance_sender.clone(),
-            signer: signer.clone(),
-            allowed_address: allowed_sender.clone(),
-            system_program: system_program.clone(),
-        },
-    );
-    allow(cpi_ctx, new_sender_balance.0, true, sender_key)?;
+        // Grant access to sender for their new balance
+        let cpi_ctx = CpiContext::new(
+            inco_program.clone(),
+            Allow {
+                allowance_account: allowance_sender.clone(),
+                signer: signer.clone(),
+                allowed_address: allowed_sender.clone(),
+                system_program: system_program.clone(),
+            },
+        );
+        allow(cpi_ctx, new_sender_balance.0, true, sender_key)?;
 
-    // Grant access to recipient for their new balance
-    let cpi_ctx = CpiContext::new(
-        inco_program,
-        Allow {
-            allowance_account: allowance_recipient.clone(),
-            signer,
-            allowed_address: allowed_recipient.clone(),
-            system_program,
-        },
-    );
-    allow(cpi_ctx, new_recipient_balance.0, true, recipient_key)?;
+        // Grant access to recipient for their new balance
+        let cpi_ctx = CpiContext::new(
+            inco_program,
+            Allow {
+                allowance_account: allowance_recipient.clone(),
+                signer,
+                allowed_address: allowed_recipient.clone(),
+                system_program,
+            },
+        );
+        allow(cpi_ctx, new_recipient_balance.0, true, recipient_key)?;
+    }
 
     Ok(())
 }

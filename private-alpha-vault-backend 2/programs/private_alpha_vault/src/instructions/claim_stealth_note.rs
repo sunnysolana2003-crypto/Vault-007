@@ -122,39 +122,42 @@ pub fn handler<'info>(
     stealth_note.lamports = 0;
 
     // Auto-Authorize: grant decrypt access to the claimer for their new balance
-    // remaining_accounts:
+    // This is OPTIONAL - if remaining_accounts is not provided, skip auto-authorize.
+    // remaining_accounts (if provided):
     // [0] allowance_claimer (mut)
     // [1] allowed_address (readonly) - claimer pubkey
     // [2] allowance_vault (mut)
     // [3] allowed_address (readonly) - claimer pubkey
-    let allowance_claimer = &ctx.remaining_accounts[0];
-    let allowed_claimer = &ctx.remaining_accounts[1];
-    let allowance_vault = &ctx.remaining_accounts[2];
-    let allowed_vault = &ctx.remaining_accounts[3];
-    let system_program = ctx.accounts.system_program.to_account_info();
-    let claimer_key = ctx.accounts.claimer.key();
+    if ctx.remaining_accounts.len() >= 4 {
+        let allowance_claimer = &ctx.remaining_accounts[0];
+        let allowed_claimer = &ctx.remaining_accounts[1];
+        let allowance_vault = &ctx.remaining_accounts[2];
+        let allowed_vault = &ctx.remaining_accounts[3];
+        let system_program = ctx.accounts.system_program.to_account_info();
+        let claimer_key = ctx.accounts.claimer.key();
 
-    let cpi_ctx = CpiContext::new(
-        inco_program.clone(),
-        Allow {
-            allowance_account: allowance_claimer.clone(),
-            signer: signer.clone(),
-            allowed_address: allowed_claimer.clone(),
-            system_program: system_program.clone(),
-        },
-    );
-    allow(cpi_ctx, new_claimer_balance.0, true, claimer_key)?;
+        let cpi_ctx = CpiContext::new(
+            inco_program.clone(),
+            Allow {
+                allowance_account: allowance_claimer.clone(),
+                signer: signer.clone(),
+                allowed_address: allowed_claimer.clone(),
+                system_program: system_program.clone(),
+            },
+        );
+        allow(cpi_ctx, new_claimer_balance.0, true, claimer_key)?;
 
-    let cpi_ctx = CpiContext::new(
-        inco_program,
-        Allow {
-            allowance_account: allowance_vault.clone(),
-            signer,
-            allowed_address: allowed_vault.clone(),
-            system_program,
-        },
-    );
-    allow(cpi_ctx, new_vault_balance.0, true, claimer_key)?;
+        let cpi_ctx = CpiContext::new(
+            inco_program,
+            Allow {
+                allowance_account: allowance_vault.clone(),
+                signer,
+                allowed_address: allowed_vault.clone(),
+                system_program,
+            },
+        );
+        allow(cpi_ctx, new_vault_balance.0, true, claimer_key)?;
+    }
 
     msg!("Stealth note claimed successfully!");
 
