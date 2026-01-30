@@ -216,11 +216,8 @@ class VaultService {
     );
     const instructionData = this.buildInstructionData('transfer', payload);
 
-    // NOTE: We don't pass allowance accounts because simulation produces different handles
-    // than the real transaction. The recipient will need to make a deposit to establish
-    // decrypt access to their balance.
-    const [vaultPda] = PublicKey.findProgramAddressSync([SEED_VAULT], PROGRAM_ID);
-    const ix = new TransactionInstruction({
+    // 1) Simulate to get the NEW resulting handles for both sender and recipient
+    const simulationIx = new TransactionInstruction({
       programId: PROGRAM_ID,
       keys: [
         { pubkey: vaultPda, isSigner: false, isWritable: true },
@@ -230,16 +227,50 @@ class VaultService {
         { pubkey: recipient, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         { pubkey: INCO_LIGHTNING_ID, isSigner: false, isWritable: false },
-        // No remaining_accounts - allowance will be established when recipient deposits
       ],
       data: instructionData,
     });
 
-    console.log('[Vault] Sending transfer transaction (without allowance accounts)...');
-    const txSig = await this.sendTransaction(ix);
+    console.log('[Vault] Simulating transfer to get handles for auto-authorization...');
+    const { senderHandle, recipientHandle } = await this.simulateTransferAndGetHandles(
+      simulationIx,
+      senderPda,
+      recipientPda
+    );
+    console.log(`[Vault] Simulation complete - Sender handle: ${senderHandle}, Recipient handle: ${recipientHandle}`);
+
+    const [allowanceSender] = findAllowancePda(senderHandle, this.publicKey);
+    const [allowanceRecipient] = findAllowancePda(recipientHandle, recipient);
+
+    // 2) Send the real tx with remaining accounts
+    // IMPORTANT: The remaining_accounts order must match what the program expects:
+    // [0] allowance_sender (mut)
+    // [1] allowed_address for sender (readonly) - sender pubkey
+    // [2] allowance_recipient (mut)
+    // [3] allowed_address for recipient (readonly) - recipient pubkey
+    const realIx = new TransactionInstruction({
+      programId: PROGRAM_ID,
+      keys: [
+        { pubkey: vaultPda, isSigner: false, isWritable: true },
+        { pubkey: senderPda, isSigner: false, isWritable: true },
+        { pubkey: recipientPda, isSigner: false, isWritable: true },
+        { pubkey: this.publicKey, isSigner: true, isWritable: true },
+        { pubkey: recipient, isSigner: false, isWritable: false },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: INCO_LIGHTNING_ID, isSigner: false, isWritable: false },
+        // remaining_accounts for auto-authorize allow() CPIs:
+        { pubkey: allowanceSender, isSigner: false, isWritable: true },
+        { pubkey: this.publicKey, isSigner: false, isWritable: false },
+        { pubkey: allowanceRecipient, isSigner: false, isWritable: true },
+        { pubkey: recipient, isSigner: false, isWritable: false },
+      ],
+      data: instructionData,
+    });
+
+    console.log('[Vault] Sending transfer transaction with auto-authorize...');
+    const txSig = await this.sendTransaction(realIx);
     console.log(`[Vault] Transfer complete! Signature: ${txSig}`);
     console.log(`[Vault] View on explorer: https://explorer.solana.com/tx/${txSig}?cluster=${this.cluster}`);
-    console.log(`[Vault] NOTE: Recipient should make a small deposit to establish decrypt access.`);
     return txSig;
   }
 
@@ -514,14 +545,41 @@ class VaultService {
     );
     const instructionData = this.buildInstructionData(instructionName, payload);
 
-    // NOTE: We skip simulation entirely because Inco FHE operations cannot be 
-    // simulated properly - they require actual on-chain execution.
-    // The deposit will work, but allowance setup requires matching handles which
-    // we can't get from simulation. Users may need to deposit twice to establish
-    // decrypt access (first deposit updates balance, second sets up allowance).
+    // NOTE: We now use simulation to get the handles for the Auto-Authorize feature.
+    // Even though Inco FHE handles are nondeterministic, the simulation
+    // gives us a valid handle that we can use to derive the allowance PDA.
     
-    console.log('[Vault] Sending deposit transaction directly (skipping simulation)...');
-    const ix = new TransactionInstruction({
+    console.log('[Vault] Simulating transaction to get handles for auto-authorization...');
+    let userHandle: bigint;
+    let vaultHandle: bigint;
+    
+    try {
+      const handles = await this.simulateAndGetHandles(simulationIx, userPda, vaultPda);
+      userHandle = handles.userHandle;
+      vaultHandle = handles.vaultHandle;
+      console.log('[Vault] Simulation complete, handles obtained');
+    } catch (simError) {
+      // If simulation fails, we can't do auto-authorize, so we fall back to manual
+      console.warn('[Vault] Simulation failed, falling back to direct transaction without auto-authorize:', simError);
+      const ix = new TransactionInstruction({
+        programId: PROGRAM_ID,
+        keys: [
+          { pubkey: vaultPda, isSigner: false, isWritable: true },
+          { pubkey: userPda, isSigner: false, isWritable: true },
+          { pubkey: this.publicKey, isSigner: true, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: INCO_LIGHTNING_ID, isSigner: false, isWritable: false },
+        ],
+        data: instructionData,
+      });
+      return this.sendTransaction(ix);
+    }
+
+    const [allowanceUser] = findAllowancePda(userHandle, this.publicKey);
+    const [allowanceVault] = findAllowancePda(vaultHandle, this.publicKey);
+
+    // Send the real tx with remaining accounts so the program can CPI `allow()`
+    const realIx = new TransactionInstruction({
       programId: PROGRAM_ID,
       keys: [
         { pubkey: vaultPda, isSigner: false, isWritable: true },
@@ -529,12 +587,17 @@ class VaultService {
         { pubkey: this.publicKey, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         { pubkey: INCO_LIGHTNING_ID, isSigner: false, isWritable: false },
+        // remaining_accounts for auto-authorize allow() CPIs:
+        { pubkey: allowanceUser, isSigner: false, isWritable: true },
+        { pubkey: this.publicKey, isSigner: false, isWritable: false },
+        { pubkey: allowanceVault, isSigner: false, isWritable: true },
+        { pubkey: this.publicKey, isSigner: false, isWritable: false },
       ],
       data: instructionData,
     });
-    
-    const txSig = await this.sendTransaction(ix);
-    console.log(`[Vault] ${instructionName} complete! Signature: ${txSig}`);
+
+    const txSig = await this.sendTransaction(realIx);
+    console.log(`[Vault] ${instructionName} complete with auto-authorize! Signature: ${txSig}`);
     return txSig;
   }
 

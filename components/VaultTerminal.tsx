@@ -255,7 +255,7 @@ const VaultTerminal: React.FC = () => {
                             : 'bg-[#1a1a1a] text-[#666]'
                       }`}>
                         {needsClaimAccess 
-                          ? 'AUTHORIZATION NEEDED' 
+                          ? 'AUTHORIZATION PENDING' 
                           : state.isRevealed && formattedUserSol 
                             ? 'DECRYPTED' 
                             : userPlaintextLamports === null && state.isRevealed 

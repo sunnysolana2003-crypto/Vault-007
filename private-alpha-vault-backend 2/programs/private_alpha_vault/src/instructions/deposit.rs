@@ -93,42 +93,40 @@ pub fn handler<'info>(
     ctx.accounts.user_position.owner = ctx.accounts.user.key();
     ctx.accounts.user_position.bump = ctx.bumps.user_position;
 
-    // Demo policy: grant decrypt access to the user for BOTH resulting handles.
+    // Auto-Authorize: grant decrypt access to the user for BOTH resulting handles.
     // remaining_accounts:
     // [0] allowance_user (mut)
-    // [1] allowed_address (readonly) - typically user pubkey
+    // [1] allowed_address (readonly) - user pubkey
     // [2] allowance_vault (mut)
-    // [3] allowed_address (readonly) - typically user pubkey
-    if ctx.remaining_accounts.len() >= 4 {
-        let allowance_user = ctx.remaining_accounts[0].clone();
-        let allowed_user = ctx.remaining_accounts[1].clone();
-        let allowance_vault = ctx.remaining_accounts[2].clone();
-        let allowed_vault = ctx.remaining_accounts[3].clone();
-        let system_program = ctx.accounts.system_program.to_account_info();
-        let user_key = ctx.accounts.user.key();
+    // [3] allowed_address (readonly) - user pubkey
+    let allowance_user = &ctx.remaining_accounts[0];
+    let allowed_user = &ctx.remaining_accounts[1];
+    let allowance_vault = &ctx.remaining_accounts[2];
+    let allowed_vault = &ctx.remaining_accounts[3];
+    let system_program = ctx.accounts.system_program.to_account_info();
+    let user_key = ctx.accounts.user.key();
 
-        let cpi_ctx = CpiContext::new(
-            inco_program.clone(),
-            Allow {
-                allowance_account: allowance_user,
-                signer: signer.clone(),
-                allowed_address: allowed_user,
-                system_program: system_program.clone(),
-            },
-        );
-        allow(cpi_ctx, new_user_balance.0, true, user_key)?;
+    let cpi_ctx = CpiContext::new(
+        inco_program.clone(),
+        Allow {
+            allowance_account: allowance_user.clone(),
+            signer: signer.clone(),
+            allowed_address: allowed_user.clone(),
+            system_program: system_program.clone(),
+        },
+    );
+    allow(cpi_ctx, new_user_balance.0, true, user_key)?;
 
-        let cpi_ctx = CpiContext::new(
-            inco_program,
-            Allow {
-                allowance_account: allowance_vault,
-                signer,
-                allowed_address: allowed_vault,
-                system_program,
-            },
-        );
-        allow(cpi_ctx, new_vault_balance.0, true, user_key)?;
-    }
+    let cpi_ctx = CpiContext::new(
+        inco_program,
+        Allow {
+            allowance_account: allowance_vault.clone(),
+            signer,
+            allowed_address: allowed_vault.clone(),
+            system_program,
+        },
+    );
+    allow(cpi_ctx, new_vault_balance.0, true, user_key)?;
 
     Ok(())
 }
