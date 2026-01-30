@@ -297,37 +297,44 @@ class VaultService {
       [SEED_VAULT],
       PROGRAM_ID
     );
-    const accountInfo = await this.connection.getAccountInfo(vaultPda);
-    if (!accountInfo) {
-      throw new Error('Vault has not been initialized yet.');
-    }
+    try {
+      const accountInfo = await this.connection.getAccountInfo(vaultPda);
+      if (!accountInfo) {
+        throw new Error('Vault has not been initialized yet.');
+      }
 
-    // Parse vault account data:
-    // - 8 bytes: discriminator
-    // - 32 bytes: authority pubkey
-    // - 16 bytes: Euint128 handle
-    // - 8 bytes: total_escrow_lamports (u64 LE)
-    // - 16 bytes: yield_index (u128 LE)
-    // - 1 byte: bump
-    const data = accountInfo.data;
-    const authority = new PublicKey(data.slice(8, 40)).toBase58();
-    const handle = parseEuint128HandleFromAccountData(data);
-    const totalEscrowLamports = new DataView(data.buffer, data.byteOffset + 56, 8).getBigUint64(0, true);
-    const yieldIndexBytes = data.slice(64, 80);
-    let yieldIndex = 0n;
-    for (let i = yieldIndexBytes.length - 1; i >= 0; i--) {
-      yieldIndex = yieldIndex * 256n + BigInt(yieldIndexBytes[i]!);
-    }
-    const bump = data[80] ?? 0;
+      // Parse vault account data:
+      // - 8 bytes: discriminator
+      // - 32 bytes: authority pubkey
+      // - 16 bytes: Euint128 handle
+      // - 8 bytes: total_escrow_lamports (u64 LE)
+      // - 16 bytes: yield_index (u128 LE)
+      // - 1 byte: bump
+      const data = accountInfo.data;
+      const authority = new PublicKey(data.slice(8, 40)).toBase58();
+      const handle = parseEuint128HandleFromAccountData(data);
+      const totalEscrowLamports = new DataView(data.buffer, data.byteOffset + 56, 8).getBigUint64(0, true);
+      const yieldIndexBytes = data.slice(64, 80);
+      let yieldIndex = 0n;
+      for (let i = yieldIndexBytes.length - 1; i >= 0; i--) {
+        yieldIndex = yieldIndex * 256n + BigInt(yieldIndexBytes[i]!);
+      }
+      const bump = data[80] ?? 0;
 
-    return {
-      authority,
-      bump,
-      encryptedBalanceHandle: handle.toString(),
-      encryptedBalanceHandleHexLE: bytesToHex(data.slice(40, 56)),
-      totalEscrowLamports: Number(totalEscrowLamports),
-      yieldIndex: yieldIndex.toString(),
-    };
+      return {
+        authority,
+        bump,
+        encryptedBalanceHandle: handle.toString(),
+        encryptedBalanceHandleHexLE: bytesToHex(data.slice(40, 56)),
+        totalEscrowLamports: Number(totalEscrowLamports),
+        yieldIndex: yieldIndex.toString(),
+      };
+    } catch (err) {
+      if (err instanceof TypeError && err.message === 'Failed to fetch') {
+        throw new Error('Network error: Unable to connect to Solana RPC. Please check your internet connection or try a different RPC.');
+      }
+      throw err;
+    }
   }
 
   /**
@@ -360,8 +367,15 @@ class VaultService {
       [SEED_USER, this.publicKey.toBuffer()],
       PROGRAM_ID
     );
-    const lamports = await this.connection.getBalance(userPda);
-    return lamports / 1_000_000_000;
+    try {
+      const lamports = await this.connection.getBalance(userPda);
+      return lamports / 1_000_000_000;
+    } catch (err) {
+      if (err instanceof TypeError && err.message === 'Failed to fetch') {
+        throw new Error('Network error: Unable to fetch escrow balance.');
+      }
+      throw err;
+    }
   }
 
   /**
