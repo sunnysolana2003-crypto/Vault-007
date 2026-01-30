@@ -1,0 +1,17 @@
+[package]
+name = "private_alpha_vault"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
+inco-lightning = { version = "0.1.2", features = ["cpi"] }
+
+[features]
+idl-build = ["anchor-lang/idl-build"]
+
+[profile.release]
+overflow-checks = true
