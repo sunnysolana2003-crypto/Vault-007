@@ -47,9 +47,11 @@ Vault-007 is a **privacy-preserving DeFi vault** that enables users to deposit, 
 - Both sender and recipient balances remain hidden
 
 ### 4. Yield Distribution
-- Vault authority can distribute yield to all depositors
-- Yield amounts are encrypted
-- Individual allocations remain private
+- **Authority-controlled yield pool** - Vault authority adds SOL as yield rewards
+- **Proportional distribution** - Yield is distributed based on each user's escrow balance
+- **Lazy claiming** - Users claim their accumulated yield when ready
+- **Encrypted yield amounts** - Individual allocations remain private
+- **Production note**: In a production deployment, yield would come from integrated DeFi protocols (staking via Marinade/Lido, lending via Solend/MarginFi, etc.)
 
 ### 5. Attested Decryption
 - Only the balance owner can decrypt their balance
@@ -239,6 +241,15 @@ npm run dev
 3. **Transfer**: Switch to Transfer tab, enter recipient address and amount
 4. **Withdraw**: Enter amount and click "Withdraw"
 5. **Stealth Notes**: Use the "Stealth Notes" panel to send funds with a secret passphrase (recipient address stays hidden!)
+6. **Claim Yield**: If yield has been distributed, click "Claim Yield" to receive your share
+
+### Testing Yield (Authority Only)
+
+The vault authority can distribute yield to depositors:
+1. Connect with the authority wallet
+2. The Admin Panel will appear (only visible to authority)
+3. Enter yield amount and click "Apply Yield"
+4. Users can then claim their proportional share
 
 ---
 
