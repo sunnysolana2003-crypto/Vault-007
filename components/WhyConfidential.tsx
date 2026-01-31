@@ -2,16 +2,16 @@ import React from 'react';
 
 const theses = [
   {
-    topic: "Visibility Risk",
-    description: "On transparent ledgers, trade intent is public. Vault-007 obscures execution data, preventing front-running and copy-trading of proprietary strategies."
+    topic: "Confidential Operations",
+    description: "Vault-007 utilizes Fully Homomorphic Encryption (FHE) to perform deposits, withdrawals, and transfers. Math happens on encrypted data, ensuring your financial activity is never exposed."
   },
   {
-    topic: "Asset Privacy",
-    description: "Institutional participants require non-disclosure of holdings. Every balance and historical position is encrypted at the protocol level, visible only to authorized keys."
+    topic: "Stealth Note Transfers",
+    description: "Send funds using secret passphrases instead of public wallet addresses. Our stealth note system ensures the recipient's identity remains 100% hidden from the blockchain."
   },
   {
-    topic: "MEV Neutralization",
-    description: "Inco Lightning's encryption hides transaction payloads from block producers, structurally neutralizing atomic arbitrage and sandwich attacks."
+    topic: "Private Yield Accrual",
+    description: "Earn yield on your SOL while keeping your position size private. Proportional distribution via a global yield index ensures fair rewards without public disclosure of holdings."
   }
 ];
 

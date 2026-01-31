@@ -3,24 +3,24 @@ import React from 'react';
 const ProtocolSpecs: React.FC = () => {
   const specs = [
     {
-      title: "State Encryption",
+      title: "FHE Architecture",
       points: [
-        "Lattice-Based FHE: Individual balances and strategy allocations are stored as ciphertexts.",
-        "Inco Lightning L3: Dedicated confidential subnet isolation from public L1 compute."
+        "Inco Lightning L3: Powered by Lattice-based FHE for secure off-chain encrypted computation.",
+        "Euint128 Handles: All balances are stored as 128-bit references to encrypted ciphertexts."
       ]
     },
     {
-      title: "Disclosure Policy",
+      title: "Privacy Protocol",
       points: [
-        "Public: Aggregated TVL, network heartbeat, and ZK-Recursive audit attestations.",
-        "Private: Individual holdings, trade parameters, and active yield strategy IDs."
+        "Confidential Transfers: Amount validation and movement occur entirely on encrypted data.",
+        "Stealth Notes: Recipient wallet addresses are never visible on-chain during the transfer process."
       ]
     },
     {
-      title: "Session Security",
+      title: "Security & Auth",
       points: [
-        "Explicit Auth: Decryption requires a signed cryptographic handshake.",
-        "Atomic Redaction: Immediate state purge upon wallet disconnect or tab blur."
+        "Attested Reveal: Decryption requires a wallet-signed message verified by Inco Covalidators.",
+        "Non-Deterministic: Every operation produces a unique handle, preventing pattern analysis."
       ]
     }
   ];
