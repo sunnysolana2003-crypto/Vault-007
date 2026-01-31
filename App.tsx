@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { VaultProvider, useVault } from './context/VaultContext';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
@@ -8,12 +8,29 @@ import VaultTerminal from './components/VaultTerminal';
 import ProtocolSpecs from './components/ProtocolSpecs';
 import CTA from './components/CTA';
 import WalletModal from './components/WalletModal';
+import OnboardingTour from './components/OnboardingTour';
 
 const AppContent: React.FC = () => {
   const { showWalletModal, setShowWalletModal, handleWalletSelect } = useVault();
+  const [runTour, setRunTour] = useState(false);
+
+  useEffect(() => {
+    const hasSeenTour = localStorage.getItem('vault007_tour_seen');
+    if (!hasSeenTour) {
+      // Delay tour slightly for better UX
+      const timer = setTimeout(() => setRunTour(true), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  const handleTourFinish = () => {
+    setRunTour(false);
+    localStorage.setItem('vault007_tour_seen', 'true');
+  };
 
   return (
     <>
+      <OnboardingTour run={runTour} onFinish={handleTourFinish} />
       <div className="relative min-h-screen bg-black text-white selection:bg-white selection:text-black">
         <Navbar />
         
