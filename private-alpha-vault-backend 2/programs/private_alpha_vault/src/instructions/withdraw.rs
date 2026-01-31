@@ -4,7 +4,6 @@ use inco_lightning::cpi::{allow, e_sub, new_euint128};
 use inco_lightning::types::Euint128;
 use inco_lightning::ID as INCO_LIGHTNING_ID;
 use crate::state::{Vault, UserPosition};
-use anchor_lang::solana_program::{program::invoke_signed, system_instruction};
 use crate::errors::VaultError;
 use crate::instructions::yield_utils::apply_pending_yield;
 
@@ -78,26 +77,16 @@ pub fn handler<'info>(
     ctx.accounts.vault.total_encrypted_balance = new_vault_balance;
 
     // Move real SOL out of the user's escrow PDA back to the wallet.
-    // Use PDA-signed CPI from user_position to user (no intermediate vault step).
-    let user_bump = ctx.accounts.user_position.bump;
-    let user_key = ctx.accounts.user.key();
-    let user_position_seeds: &[&[u8]] = &[b"user_v2", user_key.as_ref(), &[user_bump]];
-    let signer_seeds = &[user_position_seeds];
-    
-    let transfer_ix = system_instruction::transfer(
-        &ctx.accounts.user_position.key(),
-        &ctx.accounts.user.key(),
-        lamports,
-    );
-    invoke_signed(
-        &transfer_ix,
-        &[
-            ctx.accounts.user_position.to_account_info(),
-            ctx.accounts.user.to_account_info(),
-            ctx.accounts.system_program.to_account_info(),
-        ],
-        signer_seeds,
-    )?;
+    // NOTE: System Program transfers reject "from" accounts that carry data (like our PDA).
+    // So we transfer via direct lamport balance adjustment.
+    **ctx.accounts
+        .user_position
+        .to_account_info()
+        .try_borrow_mut_lamports()? -= lamports;
+    **ctx.accounts
+        .user
+        .to_account_info()
+        .try_borrow_mut_lamports()? += lamports;
 
     ctx.accounts.vault.total_escrow_lamports = ctx
         .accounts
