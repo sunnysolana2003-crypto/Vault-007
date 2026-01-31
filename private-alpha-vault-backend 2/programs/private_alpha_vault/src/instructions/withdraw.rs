@@ -78,8 +78,23 @@ pub fn handler<'info>(
     ctx.accounts.vault.total_encrypted_balance = new_vault_balance;
 
     // Move real SOL out of the user's escrow PDA back to the wallet.
+    // Instead of direct adjustment to user (which can cause simulation balance mismatch),
+    // we move to vault first, then vault sends to user via CPI.
     **ctx.accounts.user_position.to_account_info().try_borrow_mut_lamports()? -= lamports;
-    **ctx.accounts.user.to_account_info().try_borrow_mut_lamports()? += lamports;
+    **ctx.accounts.vault.to_account_info().try_borrow_mut_lamports()? += lamports;
+
+    let vault_bump = ctx.accounts.vault.bump;
+    let vault_seeds: &[&[u8]] = &[b"vault_v2", &[vault_bump]];
+    let signer_seeds = &[vault_seeds];
+    let cpi_ctx = CpiContext::new_with_signer(
+        ctx.accounts.system_program.to_account_info(),
+        anchor_lang::system_program::Transfer {
+            from: ctx.accounts.vault.to_account_info(),
+            to: ctx.accounts.user.to_account_info(),
+        },
+        signer_seeds,
+    );
+    anchor_lang::system_program::transfer(cpi_ctx, lamports)?;
 
     ctx.accounts.vault.total_escrow_lamports = ctx
         .accounts
