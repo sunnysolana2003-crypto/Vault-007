@@ -359,7 +359,13 @@ pub struct UserPosition {
 
 ## Team
 
-Built for [Hackathon Name] by [Team Name]
+Built for **Solana Hackathon** - Solo Project
+
+**Technologies Used:**
+- Solana Blockchain (Devnet)
+- Inco Network FHE (Fully Homomorphic Encryption)
+- Anchor Framework (Rust)
+- React 19 + TypeScript + Vite
 
 ---
 
@@ -379,7 +385,24 @@ MIT License - see [LICENSE](LICENSE) for details
 
 ## Links
 
-- **Live Demo**: http://localhost:3003
+- **GitHub Repository**: https://github.com/sunnysolana2003-crypto/Vault-007
 - **Program Explorer**: [View on Solana Explorer](https://explorer.solana.com/address/DmfUVqYJ5DG1iWww8YXt75zsB6RdmMws5qQMBWH4ofvC?cluster=devnet)
 - **Inco Docs**: https://docs.inco.org
 - **Solana Docs**: https://docs.solana.com
+
+---
+
+## Quick Start (For Judges)
+
+```bash
+# Clone and run locally
+git clone https://github.com/sunnysolana2003-crypto/Vault-007.git
+cd Vault-007
+npm install --legacy-peer-deps
+npm run dev
+# Open http://localhost:3003
+```
+
+**Requirements:**
+- Solana wallet (Phantom, Solflare, etc.)
+- Devnet SOL (get from https://faucet.solana.com)
