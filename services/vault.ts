@@ -818,11 +818,30 @@ class VaultService {
     );
     const instructionData = this.buildInstructionData(instructionName, payload);
 
-    // NOTE: We now use simulation to get the handles for the Auto-Authorize feature.
-    // Even though Inco FHE handles are nondeterministic, the simulation
-    // gives us a valid handle that we can use to derive the allowance PDA.
-    
-    // Build simulation instruction (without remaining_accounts)
+    // For withdrawals, skip simulation and auto-authorize entirely.
+    // FHE handles are nondeterministic, so simulation handles differ from actual tx handles.
+    // Users must call claimAccess() after withdrawal to get decrypt permissions.
+    if (instructionName === 'withdraw') {
+      console.log('[Vault] Sending withdrawal transaction (no auto-authorize)...');
+      const ix = new TransactionInstruction({
+        programId: PROGRAM_ID,
+        keys: [
+          { pubkey: vaultPda, isSigner: false, isWritable: true },
+          { pubkey: userPda, isSigner: false, isWritable: true },
+          { pubkey: this.publicKey, isSigner: true, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: INCO_LIGHTNING_ID, isSigner: false, isWritable: false },
+        ],
+        data: instructionData,
+      });
+      const txSig = await this.sendTransaction(ix);
+      console.log(`[Vault] Withdrawal complete! Signature: ${txSig}`);
+      console.log('[Vault] Note: Call claimAccess() to decrypt your new balance.');
+      return txSig;
+    }
+
+    // For deposits, we can still try auto-authorize (simulation handles work for deposits
+    // because the user's position is being created/updated, not just read)
     const simulationIx = new TransactionInstruction({
       programId: PROGRAM_ID,
       keys: [
@@ -835,7 +854,7 @@ class VaultService {
       data: instructionData,
     });
     
-    console.log('[Vault] Simulating transaction to get handles for auto-authorization...');
+    console.log('[Vault] Simulating deposit to get handles for auto-authorization...');
     let userHandle: bigint;
     let vaultHandle: bigint;
     
@@ -845,7 +864,7 @@ class VaultService {
       vaultHandle = handles.vaultHandle;
       console.log('[Vault] Simulation complete, handles obtained');
     } catch (simError) {
-      // If simulation fails, we can't do auto-authorize, so we fall back to manual
+      // If simulation fails, fall back to direct transaction without auto-authorize
       console.warn('[Vault] Simulation failed, falling back to direct transaction without auto-authorize:', simError);
       const ix = new TransactionInstruction({
         programId: PROGRAM_ID,

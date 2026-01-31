@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
-use inco_lightning::cpi::accounts::{Allow, Operation};
-use inco_lightning::cpi::{allow, e_sub, new_euint128};
+use inco_lightning::cpi::accounts::Operation;
+use inco_lightning::cpi::{e_sub, new_euint128};
 use inco_lightning::types::Euint128;
 use inco_lightning::ID as INCO_LIGHTNING_ID;
 use crate::state::{Vault, UserPosition};
@@ -94,43 +94,8 @@ pub fn handler<'info>(
         .total_escrow_lamports
         .saturating_sub(lamports);
 
-    // Auto-Authorize: grant decrypt access to the user for BOTH resulting handles.
-    // This is OPTIONAL - if remaining_accounts is not provided, skip auto-authorize.
-    // remaining_accounts (if provided):
-    // [0] allowance_user (mut)
-    // [1] allowed_address (readonly) - user pubkey
-    // [2] allowance_vault (mut)
-    // [3] allowed_address (readonly) - user pubkey
-    if ctx.remaining_accounts.len() >= 4 {
-        let allowance_user = &ctx.remaining_accounts[0];
-        let allowed_user = &ctx.remaining_accounts[1];
-        let allowance_vault = &ctx.remaining_accounts[2];
-        let allowed_vault = &ctx.remaining_accounts[3];
-        let system_program = ctx.accounts.system_program.to_account_info();
-        let user_key = ctx.accounts.user.key();
-
-        let cpi_ctx = CpiContext::new(
-            inco_program.clone(),
-            Allow {
-                allowance_account: allowance_user.clone(),
-                signer: signer.clone(),
-                allowed_address: allowed_user.clone(),
-                system_program: system_program.clone(),
-            },
-        );
-        allow(cpi_ctx, new_user_balance.0, true, user_key)?;
-
-        let cpi_ctx = CpiContext::new(
-            inco_program,
-            Allow {
-                allowance_account: allowance_vault.clone(),
-                signer,
-                allowed_address: allowed_vault.clone(),
-                system_program,
-            },
-        );
-        allow(cpi_ctx, new_vault_balance.0, true, user_key)?;
-    }
+    // NOTE: Auto-authorize removed because FHE handles are nondeterministic.
+    // Users must call claimAccess() after withdrawal to get decrypt permissions.
 
     Ok(())
 }
