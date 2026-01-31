@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useVault } from '../context/VaultContext';
 import ActionSuite from './ActionSuite';
-import StatusMonitor from './StatusMonitor';
 import AdminPanel from './AdminPanel';
 import TransferPanel from './TransferPanel';
 import StealthNotes from './StealthNotes';
@@ -392,12 +391,9 @@ const VaultTerminal: React.FC = () => {
           </div>
         </div>
 
-        {/* Sidebar: Actions & Logs */}
-        <div className="lg:col-span-4 bg-[#030303] flex flex-col h-full divide-y divide-[#141414] overflow-y-auto">
+        {/* Sidebar: Actions */}
+        <div className="lg:col-span-4 bg-[#030303] flex flex-col h-full overflow-y-auto">
           <ActionSuite />
-          <div className="flex-1">
-            <StatusMonitor />
-          </div>
         </div>
       </div>
     </section>
