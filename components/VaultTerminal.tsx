@@ -22,7 +22,6 @@ const VaultTerminal: React.FC = () => {
   const isConnected = state.wallet.status === 'connected';
   const vaultMetadata = state.vault.totals.metadata;
 
-  const [vaultPlaintextLamports, setVaultPlaintextLamports] = useState<bigint | null>(null);
   const [userPlaintextLamports, setUserPlaintextLamports] = useState<bigint | null>(null);
   const [decrypting, setDecrypting] = useState(false);
   const [decryptError, setDecryptError] = useState<string | null>(null);
@@ -40,7 +39,6 @@ const VaultTerminal: React.FC = () => {
     return `${sign}${whole.toString()}.${frac.toString().padStart(9, '0').slice(0, 4)}`;
   };
 
-  const formattedVaultSol = useMemo(() => formatSol(vaultPlaintextLamports), [vaultPlaintextLamports]);
   const formattedUserSol = useMemo(() => formatSol(userPlaintextLamports), [userPlaintextLamports]);
   const formattedEscrowSol = useMemo(
     () => (userEscrowSol == null ? null : userEscrowSol.toFixed(4)),
@@ -57,7 +55,6 @@ const VaultTerminal: React.FC = () => {
   // Handle decryption when reveal is toggled
   useEffect(() => {
     if (!isConnected || !state.isRevealed) {
-      setVaultPlaintextLamports(null);
       setUserPlaintextLamports(null);
       setUserEscrowSol(null);
       setDecrypting(false);
@@ -65,7 +62,6 @@ const VaultTerminal: React.FC = () => {
       setNeedsClaimAccess(false);
       return;
     }
-    if (!vaultMetadata?.encryptedBalanceHandle) return;
 
     let cancelled = false;
     (async () => {
@@ -74,17 +70,20 @@ const VaultTerminal: React.FC = () => {
         setDecryptError(null);
         setNeedsClaimAccess(false);
         
-        // Decrypt vault balance
-        const vaultLamports = await decryptBalance(vaultMetadata.encryptedBalanceHandle);
-        if (!cancelled) setVaultPlaintextLamports(vaultLamports);
+        // First, always try to get the escrow balance (this doesn't need decryption)
+        try {
+          const escrow = await fetchUserEscrowBalance();
+          if (!cancelled) setUserEscrowSol(escrow);
+        } catch {
+          // User position doesn't exist yet
+          if (!cancelled) setUserEscrowSol(null);
+        }
 
-        // Try to decrypt user's position (may not exist yet)
+        // Try to decrypt user's encrypted balance
         try {
           const userHandle = await fetchUserPositionHandle();
           const userLamports = await decryptBalance(userHandle);
           if (!cancelled) setUserPlaintextLamports(userLamports);
-          const escrow = await fetchUserEscrowBalance();
-          if (!cancelled) setUserEscrowSol(escrow);
           const yIndex = await fetchUserYieldIndex();
           if (!cancelled) setUserYieldIndex(yIndex);
         } catch (userErr) {
@@ -102,7 +101,6 @@ const VaultTerminal: React.FC = () => {
             if (!cancelled) {
               setNeedsClaimAccess(true);
               setUserPlaintextLamports(null);
-              setUserEscrowSol(null);
               setUserYieldIndex(null);
             }
           } else {
@@ -128,7 +126,6 @@ const VaultTerminal: React.FC = () => {
     fetchUserYieldIndex,
     isConnected,
     state.isRevealed,
-    vaultMetadata?.encryptedBalanceHandle,
   ]);
 
   const handleClaimYield = async () => {
@@ -223,98 +220,96 @@ const VaultTerminal: React.FC = () => {
               </div>
 
               <div className="p-6 space-y-6">
-                {/* Total Vault Balance */}
-                <div className="bg-[#0a0a0a] rounded-lg p-6 border border-[#1a1a1a]">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-[11px] text-[#666] uppercase tracking-wider">Total Vault Balance</span>
-                    <span className={`text-[10px] px-2 py-1 rounded ${state.isRevealed && formattedVaultSol ? 'bg-emerald-900/20 text-emerald-400' : 'bg-[#1a1a1a] text-[#666]'}`}>
-                      {state.isRevealed && formattedVaultSol ? 'DECRYPTED' : 'ENCRYPTED'}
+                {/* Your Vault Balance - Main Display */}
+                <div className="bg-[#0a0a0a] rounded-lg p-8 border border-[#1a1a1a]">
+                  <div className="flex items-center justify-between mb-6">
+                    <span className="text-[12px] text-[#888] uppercase tracking-wider font-medium">Your Vault Balance</span>
+                    <span className={`text-[10px] px-3 py-1.5 rounded-full font-medium ${
+                      needsClaimAccess 
+                        ? 'bg-amber-900/30 text-amber-400 border border-amber-900/40' 
+                        : state.isRevealed && formattedEscrowSol 
+                          ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-900/40' 
+                          : 'bg-[#1a1a1a] text-[#666] border border-[#222]'
+                    }`}>
+                      {needsClaimAccess 
+                        ? 'NEEDS AUTHORIZATION' 
+                        : state.isRevealed && formattedEscrowSol 
+                          ? 'ACTIVE' 
+                          : !isConnected
+                            ? 'CONNECT WALLET'
+                            : 'ENCRYPTED'}
                     </span>
                   </div>
-                  <div className="text-4xl font-bold text-white mono">
-                    {state.isRevealed && formattedVaultSol ? (
-                      <span>{formattedVaultSol} <span className="text-lg text-[#666]">SOL</span></span>
-                    ) : (
-                      <span className="text-[#333]">••••••••</span>
-                    )}
-                  </div>
-                  {decryptError && state.isRevealed && (
-                    <p className="mt-2 text-[11px] text-red-400">{decryptError}</p>
-                  )}
-                </div>
 
-                {/* Your Position */}
-                {isConnected && (
-                  <div className="bg-[#0a0a0a] rounded-lg p-6 border border-[#1a1a1a]">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-[11px] text-[#666] uppercase tracking-wider">Your Position</span>
-                      <span className={`text-[10px] px-2 py-1 rounded ${
-                        needsClaimAccess 
-                          ? 'bg-amber-900/20 text-amber-400' 
-                          : state.isRevealed && formattedUserSol 
-                            ? 'bg-blue-900/20 text-blue-400' 
-                            : 'bg-[#1a1a1a] text-[#666]'
-                      }`}>
-                        {needsClaimAccess 
-                          ? 'AUTHORIZATION PENDING' 
-                          : state.isRevealed && formattedUserSol 
-                            ? 'DECRYPTED' 
-                            : userPlaintextLamports === null && state.isRevealed 
-                              ? 'NO POSITION' 
-                              : 'ENCRYPTED'}
-                      </span>
+                  {!isConnected ? (
+                    <div className="text-center py-8">
+                      <div className="text-[#333] text-5xl mb-4">🔐</div>
+                      <p className="text-[#555] text-sm">Connect your wallet to view your vault</p>
                     </div>
-                    <div className="text-3xl font-bold text-white mono">
-                      {needsClaimAccess ? (
-                        <div className="space-y-3">
-                          <span className="text-[#555] text-lg block">Permission required to view updated balance</span>
-                          <button
-                            onClick={handleClaimAccess}
-                            disabled={claimingAccess}
-                            className="px-4 py-2 bg-amber-900/20 text-amber-400 border border-amber-900/30 rounded text-[11px] font-medium uppercase tracking-wider hover:bg-amber-900/30 transition-all disabled:opacity-50"
-                          >
-                            {claimingAccess ? 'Claiming...' : 'Authorize Decryption'}
-                          </button>
-                          <div className="bg-amber-900/10 border border-amber-900/20 rounded p-4 text-left">
-                            <p className="text-[11px] text-amber-400 font-medium mb-2">Why is this needed?</p>
-                            <p className="text-[10px] text-[#666] leading-relaxed">
-                              Your last transaction created a new encrypted balance handle. 
-                              You must authorize your wallet to view this specific handle before it can be decrypted.
-                            </p>
-                          </div>
+                  ) : needsClaimAccess ? (
+                    <div className="space-y-4">
+                      <div className="text-center">
+                        <div className="text-5xl font-bold text-amber-400 mono mb-2">
+                          {formattedEscrowSol ? `${formattedEscrowSol}` : '?.????'}
+                          <span className="text-xl text-amber-400/60 ml-2">SOL</span>
                         </div>
-                      ) : state.isRevealed ? (
-                        formattedUserSol ? (
-                          <span>{formattedUserSol} <span className="text-lg text-[#666]">SOL</span></span>
-                        ) : (
-                          <span className="text-[#555] text-xl">No deposits yet</span>
-                        )
-                      ) : (
-                        <span className="text-[#333]">••••••••</span>
-                      )}
-                    </div>
-                    {formattedEscrowSol && (
-                      <div className="mt-3 text-[11px] text-[#666]">
-                        Escrowed SOL in vault: <span className="text-[#aaa]">{formattedEscrowSol} SOL</span>
+                        <p className="text-[11px] text-[#666]">Balance requires authorization to decrypt</p>
                       </div>
-                    )}
-                    {userYieldIndex && (
-                      <div className="mt-1 text-[11px] text-[#666]">
-                        Your yield index: <span className="text-[#aaa]">{userYieldIndex}</span>
-                      </div>
-                    )}
-                    {state.isRevealed && !needsClaimAccess && (
-                      <div className="mt-3">
+                      <div className="flex justify-center">
                         <button
-                          onClick={handleClaimYield}
-                          className="px-3 py-2 bg-emerald-900/20 text-emerald-400 border border-emerald-900/30 rounded text-[10px] font-medium uppercase tracking-wider hover:bg-emerald-900/30 transition-all"
+                          onClick={handleClaimAccess}
+                          disabled={claimingAccess}
+                          className="px-6 py-3 bg-amber-900/20 text-amber-400 border border-amber-900/30 rounded-lg text-[12px] font-medium uppercase tracking-wider hover:bg-amber-900/30 transition-all disabled:opacity-50"
                         >
-                          Claim Yield
+                          {claimingAccess ? 'Authorizing...' : '🔓 Authorize Decryption'}
                         </button>
                       </div>
-                    )}
-                  </div>
-                )}
+                      <div className="bg-amber-900/10 border border-amber-900/20 rounded-lg p-4 mt-4">
+                        <p className="text-[11px] text-amber-400/80 leading-relaxed text-center">
+                          Your last transaction created a new encrypted balance. Click above to authorize your wallet to decrypt it.
+                        </p>
+                      </div>
+                    </div>
+                  ) : state.isRevealed ? (
+                    <div className="text-center">
+                      {formattedEscrowSol ? (
+                        <>
+                          <div className="text-5xl font-bold text-white mono mb-2">
+                            {formattedEscrowSol}
+                            <span className="text-xl text-[#666] ml-2">SOL</span>
+                          </div>
+                          {formattedUserSol && (
+                            <p className="text-[11px] text-emerald-400/80 mb-4">
+                              Encrypted balance: {formattedUserSol} SOL ✓
+                            </p>
+                          )}
+                          <div className="flex justify-center gap-3 mt-4">
+                            <button
+                              onClick={handleClaimYield}
+                              className="px-4 py-2 bg-emerald-900/20 text-emerald-400 border border-emerald-900/30 rounded text-[11px] font-medium uppercase tracking-wider hover:bg-emerald-900/30 transition-all"
+                            >
+                              Claim Yield
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="py-4">
+                          <div className="text-4xl font-bold text-[#444] mono mb-3">0.0000 SOL</div>
+                          <p className="text-[#666] text-sm">No deposits yet. Use the panel on the right to deposit SOL.</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4">
+                      <div className="text-5xl font-bold text-[#222] mono mb-2">••••••••</div>
+                      <p className="text-[#555] text-sm">Click "Decrypt & Reveal" to view your balance</p>
+                    </div>
+                  )}
+
+                  {decryptError && state.isRevealed && (
+                    <p className="mt-4 text-[11px] text-red-400 text-center">{decryptError}</p>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -327,69 +322,35 @@ const VaultTerminal: React.FC = () => {
             {/* Stealth Notes - Hidden recipient transfers */}
             <StealthNotes />
 
-            {/* On-Chain Data Card */}
+            {/* Security Info Card */}
             <div className="border border-[#1a1a1a] bg-[#080808] rounded-lg overflow-hidden">
               <div className="px-6 py-4 border-b border-[#1a1a1a]">
                 <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <svg className="w-4 h-4 text-[#666]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                   </svg>
-                  On-Chain State
+                  Privacy Guaranteed
                 </h3>
               </div>
 
               <div className="p-6">
-                {vaultMetadata ? (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-[#0a0a0a] rounded p-4 border border-[#141414]">
-                        <div className="text-[10px] text-[#555] uppercase tracking-wider mb-2">Vault Authority</div>
-                        <div className="text-[13px] mono text-[#888] break-all">{vaultMetadata.authority}</div>
-                      </div>
-                      <div className="bg-[#0a0a0a] rounded p-4 border border-[#141414]">
-                        <div className="text-[10px] text-[#555] uppercase tracking-wider mb-2">PDA Bump</div>
-                        <div className="text-[13px] mono text-[#888]">{vaultMetadata.bump}</div>
-                      </div>
-                    </div>
-
-                    <div className="bg-[#0a0a0a] rounded p-4 border border-[#141414]">
-                      <div className="text-[10px] text-[#555] uppercase tracking-wider mb-2">Total Escrowed SOL</div>
-                      <div className="text-[13px] mono text-[#888]">
-                        {(vaultMetadata.totalEscrowLamports / 1_000_000_000).toFixed(4)} SOL
-                      </div>
-                      <div className="mt-1 text-[10px] text-[#555] uppercase tracking-wider mb-1">Yield Index</div>
-                      <div className="text-[12px] mono text-[#777]">
-                        {vaultMetadata.yieldIndex}
-                      </div>
-                    </div>
-
-                    <div className="bg-[#0a0a0a] rounded p-4 border border-[#141414]">
-                      <div className="text-[10px] text-[#555] uppercase tracking-wider mb-2">Encrypted Balance Handle (Euint128)</div>
-                      <div className="text-[12px] mono text-[#666] break-all leading-relaxed">
-                        {truncateHandle(vaultMetadata.encryptedBalanceHandle)}
-                      </div>
-                      <div className="mt-2 text-[10px] mono text-[#444] break-all">
-                        Hex: {vaultMetadata.encryptedBalanceHandleHexLE}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-[10px] text-[#555]">
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span>The handle is a reference to encrypted data stored off-chain by Inco Network</span>
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-[#0a0a0a] rounded-lg p-4 border border-[#141414] text-center">
+                    <div className="text-2xl mb-2">🔒</div>
+                    <div className="text-[11px] text-[#888] font-medium mb-1">Encrypted Balance</div>
+                    <div className="text-[10px] text-[#555]">Your balance is always encrypted on-chain</div>
                   </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="text-[#444] mb-2">
-                      <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
-                    </div>
-                    <p className="text-[#555] text-sm">Connect wallet to view vault state</p>
+                  <div className="bg-[#0a0a0a] rounded-lg p-4 border border-[#141414] text-center">
+                    <div className="text-2xl mb-2">👻</div>
+                    <div className="text-[11px] text-[#888] font-medium mb-1">Hidden Transfers</div>
+                    <div className="text-[10px] text-[#555]">Transfer amounts are never visible</div>
                   </div>
-                )}
+                  <div className="bg-[#0a0a0a] rounded-lg p-4 border border-[#141414] text-center">
+                    <div className="text-2xl mb-2">🔑</div>
+                    <div className="text-[11px] text-[#888] font-medium mb-1">Only You Can Decrypt</div>
+                    <div className="text-[10px] text-[#555]">Wallet signature required to view</div>
+                  </div>
+                </div>
               </div>
             </div>
 
