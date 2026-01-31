@@ -27,8 +27,9 @@ const Hero: React.FC = () => {
         </h1>
 
         <p className="max-w-xl text-lg text-[#888] mb-10 leading-relaxed">
-          Vault-007 is a confidential yield vault on Solana powered by Inco Lightning FHE.
-          Your balances stay encrypted on-chain — only you can decrypt them.
+          Vault-007 is the ultimate confidential banking protocol on Solana. 
+          Encrypt your wealth, send stealth transfers, and earn private yield 
+          using state-of-the-art FHE — all within a single, secure vault.
         </p>
 
         <div className="flex flex-col sm:flex-row items-start gap-4 mb-16">
