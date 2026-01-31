@@ -90,27 +90,49 @@ const VaultTerminal: React.FC = () => {
           console.log('[Vault] User decryption error details:', errMsg);
           
           // Check if this is a "not allowed to decrypt" error (403 from Inco)
-          if (
+          const isPermissionError = 
             errMsg.includes('not allowed') || 
             errMsg.includes('Address is not allowed') || 
             errMsg.includes('403') ||
-            errMsg.includes('Covalidator API request failed')
-          ) {
+            errMsg.includes('Covalidator API request failed');
+            
+          if (isPermissionError) {
             console.log('[Vault] Permission required for user handle. Showing Claim Access button.');
             if (!cancelled) {
               setNeedsClaimAccess(true);
               setUserPlaintextLamports(null);
               setUserYieldIndex(null);
+              setDecryptError(null); // Don't show raw error, show authorization UI instead
+            }
+          } else if (errMsg.includes('not found') || errMsg.includes('does not exist')) {
+            // User position doesn't exist yet - that's okay
+            console.log('[Vault] User position does not exist yet.');
+            if (!cancelled) {
+              setUserPlaintextLamports(null);
+              setDecryptError(null);
             }
           } else {
-            // User position doesn't exist yet - that's okay
-            console.log('[Vault] User position likely does not exist yet.');
+            // Some other error - but don't show technical errors to user
+            console.log('[Vault] Other error:', errMsg);
             if (!cancelled) setUserPlaintextLamports(null);
           }
         }
       } catch (err) {
+        // Only show user-friendly errors, not technical API errors
+        const errMsg = err instanceof Error ? err.message : 'Decryption failed';
+        const isPermissionError = 
+          errMsg.includes('not allowed') || 
+          errMsg.includes('Address is not allowed') || 
+          errMsg.includes('Covalidator');
+        
         if (!cancelled) {
-          setDecryptError(err instanceof Error ? err.message : 'Decryption failed');
+          if (isPermissionError) {
+            setNeedsClaimAccess(true);
+            setDecryptError(null);
+          } else {
+            // Don't show technical errors, just log them
+            console.error('[Vault] Decryption error:', errMsg);
+          }
         }
       } finally {
         if (!cancelled) setDecrypting(false);
@@ -305,8 +327,12 @@ const VaultTerminal: React.FC = () => {
                     </div>
                   )}
 
-                  {decryptError && state.isRevealed && (
-                    <p className="mt-4 text-[11px] text-red-400 text-center">{decryptError}</p>
+                  {decryptError && state.isRevealed && !needsClaimAccess && (
+                    <p className="mt-4 text-[11px] text-red-400 text-center">
+                      {decryptError.includes('Covalidator') || decryptError.includes('not allowed') 
+                        ? 'Authorization required to view balance' 
+                        : decryptError}
+                    </p>
                   )}
                 </div>
               </div>
