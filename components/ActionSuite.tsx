@@ -201,14 +201,22 @@ const ActionSuite: React.FC = () => {
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#555] font-medium">SOL</span>
             </div>
-            <p className="text-[10px] text-[#444] mt-2">
-              {tab === 'deposit' 
-                ? 'Amount will be encrypted before sending to the vault'
-                : tab === 'withdraw'
-                  ? 'Withdrawal amount is encrypted during processing'
-                  : 'Transfer amount is encrypted - only you and recipient can see it'
-              }
-            </p>
+            <div className="mt-2 space-y-1">
+              <p className="text-[10px] text-[#444]">
+                {tab === 'deposit' 
+                  ? 'Amount will be encrypted before sending to the vault'
+                  : tab === 'withdraw'
+                    ? 'Withdrawal amount is encrypted during processing'
+                    : 'Transfer amount is encrypted - only you and recipient can see it'
+                }
+              </p>
+              <p className="text-[10px] text-amber-500/80 flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Min. 0.05 SOL recommended in wallet for fees & rent
+              </p>
+            </div>
           </div>
 
           {/* Submit Button */}
