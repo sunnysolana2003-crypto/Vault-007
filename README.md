@@ -23,7 +23,7 @@ Vault-007 is a **privacy-preserving DeFi vault** that enables users to deposit, 
 
 ## Demo
 
-**Live Demo**: https://vault-007.vercel.app/ (after running locally)
+**Live Demo**: https://vault-007.vercel.app/ 
 
 **Deployed Program**: [`DmfUVqYJ5DG1iWww8YXt75zsB6RdmMws5qQMBWH4ofvC`](https://explorer.solana.com/address/DmfUVqYJ5DG1iWww8YXt75zsB6RdmMws5qQMBWH4ofvC?cluster=devnet)
 
